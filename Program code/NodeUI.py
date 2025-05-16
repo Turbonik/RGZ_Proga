@@ -127,8 +127,8 @@ class NodeUI:
 
         if t == 'MERGE':
             # теперь точки ещё ближе
-            dx = self.WIDTH * 0.06  
-            dy = self.HEIGHT * 0.06
+            dx = self.WIDTH * 0.08  
+            dy = self.HEIGHT * 0.08
             if port.name == 'in1':
                 return cx - dx, cy - dy
             if port.name == 'in2':
