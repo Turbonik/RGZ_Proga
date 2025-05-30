@@ -1,80 +1,146 @@
 import tkinter as tk
-from tkinter import filedialog, messagebox
+import os, re
+from tkinter import messagebox, filedialog
+from PIL import Image, ImageTk  # <-- Pillow
 from GraphModel import GraphModel
-from NodeModel import NodeModel
-from NodeUI import NodeUI
 import DiagramIO
+from NodeUI import NodeUI
+from NodeModel import NodeModel
 
 class DiagramApp:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title('Конвертер блок-схем в программный код')
         self.io = DiagramIO.DiagramIo(self)
+
+        # === Меню Файл ===
+        menu_bar = tk.Menu(self.root)
+        file_menu = tk.Menu(menu_bar, tearoff=0)
+        file_menu.add_command(label='Сохранить схему...', command=self.io.save_dialog)
+        file_menu.add_command(label='Загрузить схему...', command=self.io.load_dialog)
+        file_menu.add_separator()
+        file_menu.add_command(label='Генерация Python кода...', command=self.generate_code)
+        menu_bar.add_cascade(label='Файл', menu=file_menu)
+        self.root.config(menu=menu_bar)
         
-        # === Toolbar слева ===
+        # === Загрузка иконок с ресайзом в папке icons ===
+        self.btn_images = {}
+        icons_dir = os.path.join(os.path.dirname(__file__), 'icons')
+        target_size = (48, 24)  # желаемый размер иконок
+
+        types = ['START','INPUT','OUTPUT','ACTION','BRANCH','FOR','WHILE', 'END']
+        for t in types:
+            path = os.path.join(icons_dir, f"{t}.png")
+            if os.path.isfile(path):
+                img = Image.open(path)
+                img = img.resize(target_size, Image.LANCZOS)
+                photo = ImageTk.PhotoImage(img)
+                self.btn_images[t] = photo
+            else:
+                self.btn_images[t] = None
+   
+        self.btn_images['MERGE'] = None
+
+        # === Создание toolbar с кнопками «иконка + текст» ===
         toolbar = tk.Frame(self.root)
         toolbar.pack(side='left', fill='y', padx=5, pady=5)
+        tk.Label(toolbar, text='Блоки:', font=('Arial', 14, 'bold'), pady=10).pack()
 
-        lbl = tk.Label(toolbar,
-               text='Блоки:',
-               font=('Arial', 14, 'bold'),    
-               pady=10)                     
-        lbl.pack()
-        
-        texts = [('START', 'Блок старта'), ('INPUT', 'Блок Ввода'), ('OUTPUT', 'Блок Вывода'),
-                  ('ACTION', 'Блок действия'), ('BRANCH', 'Блок ветвления'),
-                  ('FOR', 'Блок цикла for'), ('WHILE', 'Блок цикла while'), ('MERGE', 'Слияние ветвей'),
-                    ('END', 'Блок конца')]
-        
-        for t in texts:
-            btn = tk.Button(toolbar, text=t[1], command=lambda t = t[0]: self.create_node(t))
+        blocks = [
+            ('START',  'Начало / конец'),
+            ('INPUT',  'Блок ввода'),
+            ('OUTPUT', 'Блок вывода'),
+            ('ACTION', 'Блок действия'),
+            ('BRANCH', 'Блок ветвления'),
+            ('FOR',    'Цикл for'),
+            ('WHILE',  'Цикл while'),
+            ('END',    'Блок конца'),
+            ('MERGE',  'Слияние ветвей'),
+        ]
+
+        for t, tooltip in blocks:
+            img = self.btn_images.get(t)
+            if img:
+                btn = tk.Button(
+                    toolbar,
+                    text=tooltip,
+                    image=img,
+                    compound='left',
+                    padx=5,
+                    anchor='w',
+                    command=lambda t=t: self.create_node(t)
+                )
+                btn.image = img  # держим ссылку
+            else:
+                btn = tk.Button(
+                    toolbar,
+                    text=tooltip,
+                    anchor='w',
+                    padx=60,
+                    command=lambda t=t: self.create_node(t)
+                )
             btn.pack(fill='x', pady=2)
-        
-        lbl = tk.Label(toolbar,
+
+        # === Генерация кода ===
+        lbl_code = tk.Label(toolbar,
                text='Генерация кода:',
-               font=('Arial', 14, 'bold'),    
-               pady=10)                     
-        lbl.pack()
+               font=('Arial', 14, 'bold'),
+               pady=10)
+        lbl_code.pack()
+        tk.Button(
+            toolbar,
+            text='Генерация кода',
+            command=self.generate_code
+        ).pack(fill='x', pady=10)
 
-        tk.Button(toolbar, text='Генерация кода', command=self.generate_code).pack(fill='x', pady=10)
+            # --- Кнопка очистки холста ---
+        tk.Button(
+            toolbar,
+            text='Очистить холст',
+            fg='red',
+            command=self.clear_canvas
+        ).pack(fill='x', pady=(20,2))
 
-        lbl = tk.Label(toolbar,
-               text='Сохранение/Загрузка:',
-               font=('Arial', 14, 'bold'),    
-               pady=10)                     
-        lbl.pack()
-
-        tk.Button(toolbar, text='Сохранить блок-схему', command=self.io.save_dialog).pack(fill='x')
-        tk.Button(toolbar, text='Загрузить блок-схему', command=self.io.load_dialog).pack(fill='x')
-       
         # === Canvas + Scrollbars справа ===
         container = tk.Frame(self.root)
         container.pack(side='right', fill='both', expand=True)
-
         vsb = tk.Scrollbar(container, orient='vertical')
         hsb = tk.Scrollbar(container, orient='horizontal')
-        self.canvas = tk.Canvas(container, width=900, height=600,
-                                bg='white',
-                                yscrollcommand=vsb.set,
-                                xscrollcommand=hsb.set)
+        self.canvas = tk.Canvas(
+            container, width=900, height=600, bg='white',
+            yscrollcommand=vsb.set, xscrollcommand=hsb.set
+        )
         vsb.config(command=self.canvas.yview)
         hsb.config(command=self.canvas.xview)
         vsb.pack(side='right', fill='y')
         hsb.pack(side='bottom', fill='x')
         self.canvas.pack(side='left', fill='both', expand=True)
+        self.canvas.config(scrollregion=(0, 0, 900, 3000))
 
-        # === Фиксированный холст ===
-        total_height = 3000
-        total_width  = 900
-        self.canvas.config(scrollregion=(0, 0, total_width, total_height))
-
-        # Модель и хранилки
+        # Модель и хранилища
         self.graph = GraphModel()
         self.nodes_ui = []
         self.selected = None
-        self.connections = []  # список dict{'line','src':(ui,p),'dst':(ui,p)}
+        self.connections_ui = []
+
+    def clear_canvas(self):
+            # Удаляем все элементы на canvas и сбрасываем модели
+            self.canvas.delete('all')
+            self.nodes_ui.clear()
+            self.connections_ui.clear()
+            self.graph.nodes.clear()
 
     def create_node(self, ntype):
+        # Запрет на более чем один START и один END
+        if ntype == 'START' and self.graph.find_start():
+            messagebox.showerror("Нельзя создать", "Блок START уже существует")
+            return
+        if ntype == 'END':
+            # ищем существующий END
+            if any(n.type == 'END' for n in self.graph.nodes):
+                messagebox.showerror("Нельзя создать", "Блок END уже существует")
+                return
+
         # кладём в центр текущей видимой области
         w, h = self.canvas.winfo_width(), self.canvas.winfo_height()
         view_x, view_y = self.canvas.canvasx(0), self.canvas.canvasy(0)
@@ -87,17 +153,17 @@ class DiagramApp:
         self.nodes_ui.append(ui)
 
     def delete_node(self, ui):
-        # удаляем все соединения, в которых участвует ui
-        for conn in self.connections[:]:
-            s_ui, _ = conn['src']
-            d_ui, _ = conn['dst']
-            if ui in (s_ui, d_ui):
-                # сбросим связи в моделях
-                conn['src'][1].connection = None
-                conn['dst'][1].connection = None
-                self.canvas.delete(conn['line'])
-                self.connections.remove(conn)
-        # удаляем сам узел
+        # --- 1) удаляем все соединения, в которых участвует ui ---
+        for conn in self.connections_ui[:]:  
+            if ui in (conn.src_ui, conn.dst_ui):
+                conn.destroy()            
+                self.connections_ui.remove(conn)
+
+                # сбрасываем связи в модели
+                conn.sp.connection = None
+                conn.dp.connection = None
+
+        # --- 2) удаляем сам узел ---
         ui.on_delete()
         self.nodes_ui.remove(ui)
         self.graph.remove_node(ui.model)
@@ -112,39 +178,49 @@ class DiagramApp:
             su, sp = self.selected
             du, dp = ui, port
 
-            # порт сам в себя?
-            if su is du and sp is dp:
-                messagebox.showerror("Нельзя соединить", "Нельзя соединить порт сам с собой")
-            # два разных порта одного узла?
-            elif su is du:
-                messagebox.showerror("Нельзя соединить", "Нельзя соединить разные порты одного блока")
-            # проверяем направления
-            elif sp.port_type=='out' and dp.port_type=='in':
-                # фиксируем связь в моделях
-                sp.connection = dp
-                dp.connection = sp
-                # рисуем с учётом всех специальных обходов
-                su.draw_connection(sp, du, dp)
-            else:
-                messagebox.showerror("Неправильное соединение", "Можно только out → in")
-
-            # сбрасываем выделение
+            # сброс выделения
             cid = next(k for k,v in su.port_items.items() if v == sp)
             self.canvas.itemconfig(cid, fill='black')
             self.selected = None
 
-    def update_connections(self, moved_ui):
-        
-        for conn in self.connections:
-            su, sp = conn['src']
-            du, dp = conn['dst']
-            if moved_ui not in (su, du):
-                continue
+            # Запрет на объединение ветвей разных условий
+            if dp.parent.type == 'MERGE':
+                # Проверка соответствия порта
+                if sp.name == 'out_true' and dp.name != 'in2':
+                    messagebox.showerror("Ошибка", "Выход True соединяется с правым портом")
+                    return
+                if sp.name == 'out_false' and dp.name != 'in1':
+                    messagebox.showerror("Ошибка", "Выход False соединяется с левым портом ")
+                    return
 
-            if conn['route'] == 'loop':
-                su._redraw_loop(conn)
+            # проверяем уникальность соединения портов
+            if su is du and sp is dp:
+                messagebox.showerror("Нельзя соединить", "Нельзя соединить порт сам с собой")
+                return
+            if su is du:
+                messagebox.showerror("Нельзя соединить", "Нельзя соединить разные порты одного блока")
+                return
+            if dp.port_type == 'in' and dp.connection is not None:
+                messagebox.showerror("Нельзя соединить", "Входной порт уже используется")
+                return
+            if sp.port_type == 'out' and sp.connection is not None:
+                messagebox.showerror("Нельзя соединить", "Исходящий порт уже используется")
+                return
+            # проверка направления
+            if sp.port_type=='out' and dp.port_type=='in':
+                sp.connection = dp
+                dp.connection = sp
+                su.draw_connection(sp, du, dp)
             else:
-                su._redraw_default(conn)
+                messagebox.showerror("Неправильное соединение", "Можно только out → in")
+            
+            
+
+    def update_connections(self, moved_ui):
+        # self.connections_ui — список ConnectionUI
+        for conn in self.connections_ui:
+            if moved_ui in (conn.src_ui, conn.dst_ui):
+                conn.refresh_endpoints()
     
     
 
@@ -196,13 +272,25 @@ class DiagramApp:
                     code.append(f"{pad}{(cur.content or 'pass').strip()}")
                     cur=next_node(cur)
                 elif tp == 'INPUT':
-                    # если content = "x y z", генерим "x, y, z = input().split()"
+                    # Разбираем список имён
                     vars_ = cur.content.split()
-                    if len(vars_) > 1:
-                        line = f"{', '.join(vars_)} = input()"
-                    else:
-                        line = f"{vars_[0]} = input()"
-                    code.append(pad + line)
+                    # Проверка: хотя бы одно имя
+                    if not vars_:
+                        messagebox.showerror('Error', f'Блок {cur.id}: не указаны переменные для INPUT')
+                        return
+                    # Проверка каждого имени: допустимый Python-идентификатор
+                    identifier_pattern = re.compile(r'^[A-Za-z_]\w*$')
+                    for v in vars_:
+                        if not identifier_pattern.match(v):
+                            messagebox.showerror('Error',
+                                f'Блок {cur.id}: недопустимое имя переменной "{v}"\n'
+                                'Имя должно начинаться с буквы или подчеркивания\n'
+                                'и содержать только буквы, цифры и подчеркивание.'
+                            )
+                            return
+                    # Генерируем по одной строке на каждую переменную
+                    for v in vars_:
+                        code.append(f"{pad}{v} = input()")
                     cur = next_node(cur)
 
                 elif tp == 'OUTPUT':
@@ -251,9 +339,6 @@ class DiagramApp:
         btn_save = tk.Button(win, text='Сохранить .py', command=save_code)
         btn_save.pack(pady=5)
     
-
-
-
 
     def run(self):
         self.root.mainloop()

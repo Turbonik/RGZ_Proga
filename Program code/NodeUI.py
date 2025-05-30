@@ -1,4 +1,5 @@
 from tkinter import simpledialog, messagebox
+from ConnectionUI import ConnectionUI
 
 class NodeUI:
     WIDTH, HEIGHT = 120, 60
@@ -172,7 +173,7 @@ class NodeUI:
 
     def on_double_click(self, event):
 
-        if self.model.type in ('INPUT','OUTPUT'):
+        if self.model.type == 'INPUT':
             new = simpledialog.askstring(
             "Изменение текста", "Введите переменные через пробел:",
             initialvalue=self.model.content
@@ -199,41 +200,15 @@ class NodeUI:
     
 
     def draw_connection(self, sp, du, dp, route=None):
-        """
-        Рисует соединение из порта sp (source port) в порт dp (destination port).
-        Если route=='loop', рисует L‑образную петлю;
-        если route=='default', рисует обычное G‑образное соединение;
-        если route is None — определяет автоматически.
-        """
-        # Автовыбор маршрута, если он не передан
-        if route == 'loop':
-            is_loop = True
-        elif route == 'default':
-            is_loop = False
-        else:
-            # автоматическая детекция петли
-            is_loop = (
-                du.model.type in ('FOR', 'WHILE')
-                and sp.name == 'out'
-                and dp.name == 'in_back'
-            )
-
-        # вызываем нужный метод и сохраняем результат
-        if is_loop:
-            line = self._create_loop_line(sp, du, dp)
-            actual_route = 'loop'
-        else:
-            line = self._create_default_line(sp, du, dp)
-            actual_route = 'default'
-
-        # сохраняем в список соединений приложения
-        self.app.connections.append({
-            'line':  line,
-            'src':   (self, sp),
-            'dst':   (du, dp),
-            'route': actual_route
-        })
-        return line
+        conn = ConnectionUI(
+            self.canvas,
+            src_ui=self, sp=sp,
+            dst_ui=du,   dp=dp,
+            app=self.app
+        )
+        sp.connection = dp
+        dp.connection = sp
+        return conn.line_id
 
     def _create_default_line(self, sp, du, dp):
         """
