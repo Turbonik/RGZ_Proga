@@ -56,7 +56,7 @@ class DiagramApp:
     def __create_toolbar_buttons(self, toolbar):
         tk.Label(toolbar, text='Блоки:', font=('Arial', 14, 'bold'), pady=10).pack()
         blocks = [
-            ('START',  'Начало / конец'),
+            ('START',  'Блок начала'),
             ('INPUT',  'Блок ввода'),
             ('OUTPUT', 'Блок вывода'),
             ('ACTION', 'Блок действия'),
