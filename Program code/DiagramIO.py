@@ -1,24 +1,17 @@
-from ConnectionUI import ConnectionUI
 import json
-from tkinter import filedialog, messagebox
-from DiagramApp import DiagramApp
+from tkinter import messagebox, filedialog
 from NodeModel import NodeModel
+from DiagramApp import DiagramApp
 from NodeUI import NodeUI
+from ConnectionUI import ConnectionUI
 
 class DiagramIo:
-    """
-    Отвечает за сохранение/загрузку диаграммы в JSON-файл.
-    """
     def __init__(self, app: 'DiagramApp'):
         self.app = app
 
     def _collect_data(self):
-        """
-        Собирает из текущей диаграммы питоновскую структуру для JSON.
-        """
-        # 1) Ноды
         nodes = []
-        for ui in self.app.nodes_ui:
+        for ui in self.app.diagram_state.nodes_ui:  # Исправлено: app.diagram_state.nodes_ui
             m = ui.model
             nodes.append({
                 'id':      m.id,
@@ -28,15 +21,14 @@ class DiagramIo:
                 'y':       ui.y,
             })
 
-        # 2) Рёбра с точками
         edges = []
-        for conn in self.app.connections_ui:
+        for conn in self.app.diagram_state.connections_ui:  # Исправлено: app.diagram_state.connections_ui
             edges.append({
                 'from_node': conn.src_ui.model.id,
                 'from_port': conn.sp.name,
                 'to_node':   conn.dst_ui.model.id,
                 'to_port':   conn.dp.name,
-                'points':    conn.points,   # список [(x,y),...]
+                'points':    conn.points,
             })
 
         return {'nodes': nodes, 'edges': edges}
@@ -79,27 +71,17 @@ class DiagramIo:
             messagebox.showerror("Ошибка", f"При загрузке произошла ошибка:\n{e}")
 
     def _load_data(self, data):
-        """
-        Очищает текущую диаграмму и рисует заново из данных JSON.
-        """
-        # --- 1) очистка ---
         self.app.canvas.delete('all')
-        self.app.nodes_ui.clear()
-        self.app.connections_ui.clear()
-        self.app.graph.nodes.clear()
-
-        # temporary map node_id -> NodeUI
+        self.app.diagram_state.clear()  # Очищаем состояние диаграммы
+        
         id_to_ui = {}
 
-        # --- 2) создаём ноды ---
         for n in data.get('nodes', []):
             m = NodeModel(n['id'], n['type'], n.get('content', ''))
-            self.app.graph.add_node(m)
             ui = NodeUI(self.app.canvas, m, n['x'], n['y'], self.app)
-            self.app.nodes_ui.append(ui)
+            self.app.diagram_state.add_node(ui)  # Добавляем узел в diagram_state
             id_to_ui[m.id] = ui
 
-        # --- 3) создаём связи по данным edges ---
         for e in data.get('edges', []):
             su_ui = id_to_ui[e['from_node']]
             du_ui = id_to_ui[e['to_node']]
@@ -107,7 +89,6 @@ class DiagramIo:
             dp = next(p for p in du_ui.model.ports if p.name == e['to_port'])
             pts = e.get('points', None)
 
-            # создаём ConnectionUI с восстановленными точками
             conn = ConnectionUI(
                 self.app.canvas,
                 src_ui=su_ui, sp=sp,
@@ -115,6 +96,5 @@ class DiagramIo:
                 app=self.app,
                 points=pts
             )
-            # привязываем модельно
             sp.connection = dp
             dp.connection = sp

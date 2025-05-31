@@ -1,11 +1,9 @@
 from tkinter import simpledialog, messagebox
-from ConnectionUI import ConnectionUI
 
 class NodeUI:
     WIDTH, HEIGHT = 120, 60
-    # константы обхода
-    LOOP_DX     = 80   # насколько уходим влево
-    LOOP_DOWN   = 40   # насколько опускаемся вниз от выхода
+    LOOP_DX = 80
+    LOOP_DOWN = 40
     ENTRY_OFFSET = -10
 
     def __init__(self, canvas, model, x, y, app):
@@ -13,90 +11,66 @@ class NodeUI:
         self.model = model
         self.app = app
         self.x, self.y = x, y
-        self.items = [] 
+        self.items = []
         self.port_items = {}
         self.draw()
-        self.bind()
+        self.bind_events()
 
     def draw(self):
-        # Удаляем предыдущие элементы
+        self.__clear_previous()
+        self.__draw_shape()
+        self.__draw_text()
+        self.__draw_ports()
+
+    def __clear_previous(self):
         for item in self.items:
             self.canvas.delete(item)
         self.items.clear()
         self.port_items.clear()
 
+    def __draw_shape(self):
         x0, y0 = self.x, self.y
         x1, y1 = x0 + self.WIDTH, y0 + self.HEIGHT
         cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
         t = self.model.type
 
-        # === Форма узла ===
         if t in ('START', 'END'):
-            self.shape = self.canvas.create_oval(x0, y0, x1, y1,
-                                                 fill='lightgrey', width=2)
+            self.shape = self.canvas.create_oval(x0, y0, x1, y1, fill='lightgrey', width=2)
         elif t == 'BRANCH':
             pts = [cx, y0, x1, cy, cx, y1, x0, cy]
-            self.shape = self.canvas.create_polygon(pts,
-                                                    fill='yellow',
-                                                    outline='black', width=2)
+            self.shape = self.canvas.create_polygon(pts, fill='yellow', outline='black', width=2)
         elif t == 'WHILE':
             pts = [cx, y0, x1, cy, cx, y1, x0, cy]
-            self.shape = self.canvas.create_polygon(pts,
-                                                    fill='lightblue',
-                                                    outline='black', width=2)
+            self.shape = self.canvas.create_polygon(pts, fill='lightblue', outline='black', width=2)
         elif t == 'MERGE':
-        
             self.shape = self.canvas.create_rectangle(x0, y0, x1, y1, outline='', fill='')
         elif t == 'FOR':
-            # шестиугольник: верхняя и нижняя «срезы»
             dx = self.WIDTH * 0.2   
-            pts = [
-                x0 + dx, y0,       # верхний левый
-                x1 - dx, y0,       # верхний правый
-                x1,      cy,       # правый средний
-                x1 - dx, y1,       # нижний правый
-                x0 + dx, y1,       # нижний левый
-                x0,      cy        # левый средний
-            ]
-            self.shape = self.canvas.create_polygon(
-                pts, fill='lightblue', outline='black', width=2
-            )
+            pts = [x0+dx,y0, x1-dx,y0, x1,cy, x1-dx,y1, x0+dx,y1, x0,cy]
+            self.shape = self.canvas.create_polygon(pts, fill='lightblue', outline='black', width=2)
         elif t in ('INPUT','OUTPUT'):
-            # 1) рисуем параллелограмм
             skew = self.WIDTH * 0.2
             fill = 'lightgreen' if t=='INPUT' else 'lightpink'
-            pts = [
-                x0 + skew, y0,
-                x1,        y0,
-                x1 - skew, y1,
-                x0,        y1
-            ]
-            self.shape = self.canvas.create_polygon(
-                pts, fill=fill, outline='black', width=2
-            )
-
-
-
+            pts = [x0+skew,y0, x1,y0, x1-skew,y1, x0,y1]
+            self.shape = self.canvas.create_polygon(pts, fill=fill, outline='black', width=2)
         else:
-            fill = 'lightgrey'
-            self.shape = self.canvas.create_rectangle(x0, y0, x1, y1,
-                                                      fill=fill, width=2)
+            self.shape = self.canvas.create_rectangle(x0, y0, x1, y1, fill='lightgrey', width=2)
+        self.items.append(self.shape)
 
-        # === Текст ===
-        if t != 'MERGE':
+    def __draw_text(self):
+        if self.model.type != 'MERGE':
+            cx = self.x + self.WIDTH / 2
+            cy = self.y + self.HEIGHT / 2
             label = self.model.content or self.model.type
             self.text_id = self.canvas.create_text(cx, cy, text=label)
-            self.items += [self.shape, self.text_id]
-        else:
-            self.items.append(self.shape)
+            self.items.append(self.text_id)
 
-        # === Порты ===
+    def __draw_ports(self):
         for p in self.model.ports:
             px, py = self.port_position(p)
             cid = self.canvas.create_oval(px-5, py-5, px+5, py+5, fill='black')
             self.port_items[cid] = p
             self.items.append(cid)
-
 
     def port_position(self, port):
         x0, y0 = self.x, self.y
@@ -138,8 +112,9 @@ class NodeUI:
                 return cx, cy + dy
 
         return cx, cy
+     
 
-    def bind(self):
+    def bind_events(self):
         editable = ('ACTION','BRANCH','FOR','WHILE', 'OUTPUT', 'INPUT')
         for item in (self.shape, getattr(self, 'text_id', None)):
             if item is None: continue
@@ -151,45 +126,25 @@ class NodeUI:
             self.canvas.tag_bind(cid, '<Button-1>', self.on_port_click)
 
     def on_drag(self, event):
-    
         real_x = self.canvas.canvasx(event.x)
         real_y = self.canvas.canvasy(event.y)
-
-        # Считаем смещение относительно центра текущего узла
         dx = real_x - (self.x + self.WIDTH/2)
         dy = real_y - (self.y + self.HEIGHT/2)
-
-        # Сохраняем новые координаты узла
         self.x += dx
         self.y += dy
-
-        # Сдвигаем все его графические элементы
         for it in self.items:
             self.canvas.move(it, dx, dy)
-
-        # Обновляем все соединения, которые к нему привязаны
         self.app.update_connections(self)
 
-
     def on_double_click(self, event):
-
-        if self.model.type == 'INPUT':
-            new = simpledialog.askstring(
-            "Изменение текста", "Введите переменные через пробел:",
-            initialvalue=self.model.content
-        )
-        else:
-           new = simpledialog.askstring(
-           "Изменение текста", "Введите текст:",
-            initialvalue=self.model.content
-            ) 
-
+        prompt = "Введите переменные через пробел:" if self.model.type == 'INPUT' else "Введите текст:"
+        new = simpledialog.askstring("Изменение текста", prompt, initialvalue=self.model.content)
         if new is not None:
-            self.model.content=new.strip()
+            self.model.content = new.strip()
             self.canvas.itemconfig(self.text_id, text=self.model.content)
 
     def on_right_click(self, event):
-        if messagebox.askyesno("Удаление блока", f"Вы действительно хотите удалить блок {self.model.id}?"):
+        if messagebox.askyesno("Удаление блока", f"Удалить блок {self.model.id}?"):
             self.app.delete_node(self)
 
     def on_port_click(self, event):
@@ -197,97 +152,6 @@ class NodeUI:
         port = self.port_items[cid]
         self.app.handle_port_click(self, port)
 
-    
-
-    def draw_connection(self, sp, du, dp, route=None):
-        conn = ConnectionUI(
-            self.canvas,
-            src_ui=self, sp=sp,
-            dst_ui=du,   dp=dp,
-            app=self.app
-        )
-        sp.connection = dp
-        dp.connection = sp
-        return conn.line_id
-
-    def _create_default_line(self, sp, du, dp):
-        """
-        Обычная «G‑образная» линия: вниз, затем вправо, затем вниз до цели.
-        """
-        x1, y1 = self.port_position(sp)
-        x2, y2 = du.port_position(dp)
-        ym = (y1 + y2) / 2
-
-        return self.canvas.create_line(
-            x1, y1,
-            x1, ym,
-            x2, ym,
-            x2, y2,
-            arrow='last',
-            width=2
-        )
-
-    def _create_loop_line(self, sp, du, dp):
-        """
-        L‑образная петля: из тела вниз, влево, вверх, вправо к цели.
-        """
-        x1, y1 = self.port_position(sp)
-        x2, y2 = du.port_position(dp)
-
-        # 0) точка выхода из тела
-        pt0 = (x1, y1)
-        # 1) вниз от тела
-        pt1 = (x1, y1 + self.LOOP_DOWN)
-        # 2) влево
-        pt2 = (pt1[0] - self.LOOP_DX, pt1[1])
-        # 3) вниз до чуть выше порта
-        pt3 = (pt2[0], y2)
-        # 4) вправо до небольшого отступа от входного порта
-        entry_x = x2 + self.ENTRY_OFFSET
-        pt4 = (entry_x, pt3[1])
-        # 5) вниз до уровня порта
-        pt5 = (entry_x, y2)
-        # 6) влево к самому порту
-        pt6 = (x2, y2)
-
-        pts = [pt0, pt1, pt2, pt3, pt4, pt5, pt6]
-        flat = [coord for pt in pts for coord in pt]
-        return self.canvas.create_line(
-            *flat,
-            smooth=False,
-            arrow='last',
-            width=2
-        )
-    
-    def _redraw_loop(self, conn):
-        sp = conn['src'][1]
-        du, dp = conn['dst']
-        x1, y1 = self.port_position(sp)
-        x2, y2 = du.port_position(dp)
-
-        pt0 = (x1, y1)
-        pt1 = (x1, y1 + self.LOOP_DOWN)
-        pt2 = (pt1[0] - self.LOOP_DX, pt1[1])
-        pt3 = (pt2[0], y2)
-        entry_x = x2 + self.ENTRY_OFFSET
-        pt4 = (entry_x, pt3[1])
-        pt5 = (entry_x, y2)
-        pt6 = (x2, y2)
-
-        pts = [pt0, pt1, pt2, pt3, pt4, pt5, pt6]
-        flat = [c for pt in pts for c in pt]
-        self.canvas.coords(conn['line'], *flat)
-
-    def _redraw_default(self, conn):
-        sp = conn['src'][1]; du, dp = conn['dst']
-        x1,y1 = self.port_position(sp)
-        x2,y2 = du.port_position(dp)
-        ym = (y1+y2)/2
-        self.canvas.coords(conn['line'],
-                           x1,y1, x1,ym, x2,ym, x2,y2)
-
-
-    
-            
     def on_delete(self):
-        for it in self.items: self.canvas.delete(it)
+        for it in self.items: 
+            self.canvas.delete(it)
