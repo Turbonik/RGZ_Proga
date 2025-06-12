@@ -87,7 +87,11 @@ class DiagramIo:
             du_ui = id_to_ui[e['to_node']]
             sp = next(p for p in su_ui.model.ports if p.name == e['from_port'])
             dp = next(p for p in du_ui.model.ports if p.name == e['to_port'])
-            pts = e.get('points', None)
+            raw_pts = e.get('points', None)
+            if raw_pts is not None:
+                pts = [tuple(pt) for pt in raw_pts]
+            else:
+                pts = None
 
             conn = ConnectionUI(
                 self.app.canvas,
@@ -96,5 +100,4 @@ class DiagramIo:
                 app=self.app,
                 points=pts
             )
-            sp.connection = dp
-            dp.connection = sp
+ 

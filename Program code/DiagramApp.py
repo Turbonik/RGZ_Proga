@@ -3,19 +3,19 @@ import os, re
 from tkinter import messagebox, filedialog
 from PIL import Image, ImageTk  
 from NodeUI import NodeUI
-import diagramIO
+import DiagramIO
 from GraphModel import GraphModel
 from NodeModel import NodeModel
 from DiagramState import DiagramState
 from ConnectionUI import ConnectionUI
-from CodeGenerator import CodeGenerator
+
 
 class DiagramApp:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title('Конвертер блок-схем в программный код')
         self.diagram_state = DiagramState()
-        self.io = diagramIO.DiagramIo(self)
+        self.io = DiagramIO.DiagramIo(self)
         self.__setup_ui()
 
 
@@ -270,13 +270,13 @@ class DiagramApp:
             while cur and cur != stop:
                 pad = '    ' * indent
                 tp = cur.type
-
+                Text = cur.content.replace("\n", "")    
                 if tp == 'ACTION':
-                    code.append(f"{pad}{(cur.content or 'pass').strip()}")
+                    code.append(f"{pad}{(Text.strip() or 'pass').strip()}")
                     cur = next_node(cur)
 
                 elif tp == 'INPUT':
-                    vars_ = cur.content.split()
+                    vars_ = Text.split()
                     if not vars_:
                         messagebox.showerror('Error', f'Блок {cur.id}: не указаны переменные для INPUT')
                         return
@@ -295,12 +295,12 @@ class DiagramApp:
                     cur = next_node(cur)
 
                 elif tp == 'OUTPUT':
-                    line = f"print({cur.content})"
+                    line = f"print({Text})"
                     code.append(pad + line)
                     cur = next_node(cur)
 
                 elif tp == 'BRANCH':
-                    cond = cur.content.strip() or 'condition'
+                    cond = Text.strip() or 'condition'
                     t = next(p for p in cur.ports if p.name=='out_true').connection.parent
                     f = next(p for p in cur.ports if p.name=='out_false').connection.parent
                     m = find_merge(t, f)
@@ -314,7 +314,7 @@ class DiagramApp:
                     cur = m
 
                 elif tp == 'FOR':
-                    it = cur.content.strip() or 'item in iterable'
+                    it = Text.strip() or 'item in iterable'
                     code.append(f"{pad}for {it}:")
                     b = next(p for p in cur.ports if p.name=='out_body').connection.parent
                     e = next(p for p in cur.ports if p.name=='out_end').connection.parent
@@ -323,7 +323,7 @@ class DiagramApp:
                     cur = e
 
                 elif tp == 'WHILE':
-                    cond = cur.content.strip() or 'condition'
+                    cond = Text.strip() or 'condition'
                     code.append(f"{pad}while {cond}:")
                     body_node = next(p for p in cur.ports if p.name=='out_body').connection.parent
                     end_node  = next(p for p in cur.ports if p.name=='out_end').connection.parent
