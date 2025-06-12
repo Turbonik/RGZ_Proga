@@ -197,9 +197,7 @@ class DiagramApp:
             if moved_ui in (conn.src_ui, conn.dst_ui):
                 conn.refresh_endpoints()
 
-    def generate_code(self):
-        generator = CodeGenerator(self.diagram_state)
-        generator.generate()
+
 
     def clear_canvas(self):
         self.canvas.delete('all')
@@ -212,21 +210,30 @@ class DiagramApp:
         graph = GraphModel()
         for node_ui in self.diagram_state.nodes_ui:
             graph.add_node(node_ui.model)
-        
+
         start = graph.find_start()
         if not start:
             messagebox.showerror('Error','Отсутствует блок начала')
             return
 
-        # Проверяем: нет «незакрытых» портов
+        # НОВАЯ, расширенная валидация портов:
         for n in graph.nodes:
             for p in n.ports:
-                if p.port_type=='in' and p.connection is None and n.type!='START':
-                    messagebox.showerror('Error',f'Порт {n.id} без соединения')
+                # входные: все, кроме START и in_back у FOR/WHILE
+                if (p.port_type == 'in'
+                        and p.connection is None
+                        and n.type != 'START'
+                        and not (n.type in ('FOR','WHILE') and p.name == 'in_back')):
+                    messagebox.showerror('Error', f'Порт {n.id} без соединения')
                     return
-                if p.port_type=='out' and p.connection is None and n.type!='END':
-                    messagebox.showerror('Error',f'Порт {n.id} без соединения')
+                # выходные: все, кроме END и out_end у FOR/WHILE
+                if (p.port_type == 'out'
+                        and p.connection is None
+                        and n.type != 'END'
+                        and not (n.type in ('FOR','WHILE') and p.name == 'out_end')):
+                    messagebox.showerror('Error', f'Порт {n.id} без соединения')
                     return
+
 
         code = ['def main():']
 
@@ -301,17 +308,22 @@ class DiagramApp:
 
                 elif tp == 'BRANCH':
                     cond = Text.strip() or 'condition'
-                    t = next(p for p in cur.ports if p.name=='out_true').connection.parent
-                    f = next(p for p in cur.ports if p.name=='out_false').connection.parent
+                    t = next(p for p in cur.ports if p.name == 'out_true').connection.parent
+                    f = next(p for p in cur.ports if p.name == 'out_false').connection.parent
                     m = find_merge(t, f)
                     if m is None:
                         messagebox.showerror('Error', f'Не найдена точка MERGE для блока {cur.id}')
                         return
+
                     code.append(f"{pad}if {cond}:")
                     process_path(t, m, indent+1)
+
                     code.append(f"{pad}else:")
                     process_path(f, m, indent+1)
+
+                    # возвращаемся к merge-узлу
                     cur = m
+
 
                 elif tp == 'FOR':
                     it = Text.strip() or 'item in iterable'

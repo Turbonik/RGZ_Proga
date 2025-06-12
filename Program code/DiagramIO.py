@@ -11,7 +11,7 @@ class DiagramIo:
 
     def _collect_data(self):
         nodes = []
-        for ui in self.app.diagram_state.nodes_ui:  # Исправлено: app.diagram_state.nodes_ui
+        for ui in self.app.diagram_state.nodes_ui:
             m = ui.model
             nodes.append({
                 'id':      m.id,
@@ -22,16 +22,20 @@ class DiagramIo:
             })
 
         edges = []
-        for conn in self.app.diagram_state.connections_ui:  # Исправлено: app.diagram_state.connections_ui
+        for conn in self.app.diagram_state.connections_ui:
+            # сохраняем только внутренние точки, без концов
+            inner = conn.points[1:-1]
             edges.append({
                 'from_node': conn.src_ui.model.id,
                 'from_port': conn.sp.name,
                 'to_node':   conn.dst_ui.model.id,
                 'to_port':   conn.dp.name,
-                'points':    conn.points,
+                'points':    inner if inner else None,
             })
 
         return {'nodes': nodes, 'edges': edges}
+
+
 
     def save_dialog(self):
         data = self._collect_data()
@@ -71,33 +75,48 @@ class DiagramIo:
             messagebox.showerror("Ошибка", f"При загрузке произошла ошибка:\n{e}")
 
     def _load_data(self, data):
+        # 0) Очистка предыдущего
         self.app.canvas.delete('all')
-        self.app.diagram_state.clear()  # Очищаем состояние диаграммы
-        
+        self.app.diagram_state.clear()
+
+        # 1) создаём все узлы, автоматически правим повторяющиеся ID
         id_to_ui = {}
-
+        used_ids = set()
         for n in data.get('nodes', []):
-            m = NodeModel(n['id'], n['type'], n.get('content', ''))
-            ui = NodeUI(self.app.canvas, m, n['x'], n['y'], self.app)
-            self.app.diagram_state.add_node(ui)  # Добавляем узел в diagram_state
-            id_to_ui[m.id] = ui
+            orig_id = n['id']
+            new_id = orig_id
+            i = 2
+            # если встречался — добавляем суффикс _2, _3 …
+            while new_id in used_ids:
+                new_id = f"{orig_id}_{i}"
+                i += 1
+            used_ids.add(new_id)
 
+            # создаём узел с уникальным new_id
+            m  = NodeModel(new_id, n['type'], n.get('content',''))
+            ui = NodeUI(self.app.canvas, m, n['x'], n['y'], self.app)
+            self.app.diagram_state.add_node(ui)
+            id_to_ui[new_id] = ui
+
+        # 2) создаём связи
         for e in data.get('edges', []):
+            # на входе from_node/to_node уже преобразованы в новые ключи
             su_ui = id_to_ui[e['from_node']]
             du_ui = id_to_ui[e['to_node']]
-            sp = next(p for p in su_ui.model.ports if p.name == e['from_port'])
-            dp = next(p for p in du_ui.model.ports if p.name == e['to_port'])
-            raw_pts = e.get('points', None)
-            if raw_pts is not None:
-                pts = [tuple(pt) for pt in raw_pts]
-            else:
-                pts = None
+            sp    = next(p for p in su_ui.model.ports if p.name == e['from_port'])
+            dp    = next(p for p in du_ui.model.ports if p.name == e['to_port'])
 
-            conn = ConnectionUI(
+            raw = e.get('points')
+            inner = [tuple(pt) for pt in raw] if raw else None
+
+            x0, y0 = su_ui.port_position(sp)
+            x1, y1 = du_ui.port_position(dp)
+            pts = [(x0, y0)] + inner + [(x1, y1)] if inner else None
+
+            ConnectionUI(
                 self.app.canvas,
                 src_ui=su_ui, sp=sp,
                 dst_ui=du_ui, dp=dp,
                 app=self.app,
                 points=pts
             )
- 
