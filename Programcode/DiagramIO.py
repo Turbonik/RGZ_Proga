@@ -23,7 +23,7 @@ class DiagramIo:
 
         edges = []
         for conn in self.app.diagram_state.connections_ui:
-            # сохраняем только внутренние точки, без концов
+           
             inner = conn.points[1:-1]
             edges.append({
                 'from_node': conn.src_ui.model.id,
@@ -100,7 +100,7 @@ class DiagramIo:
 
         # 2) создаём связи
         for e in data.get('edges', []):
-            # на входе from_node/to_node уже преобразованы в новые ключи
+     
             su_ui = id_to_ui[e['from_node']]
             du_ui = id_to_ui[e['to_node']]
             sp    = next(p for p in su_ui.model.ports if p.name == e['from_port'])

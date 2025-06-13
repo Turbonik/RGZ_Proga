@@ -24,10 +24,10 @@ class ConnectionUI:
 
     def __init_loop_flag(self):
         self.is_loop = (
-          self.dst_ui.model.type in ('FOR', 'WHILE')
-           and self.sp.name == 'out_body'
-           and self.dp.name == 'in_back'
-       )
+            self.dst_ui.model.type in ('FOR', 'WHILE')
+            and self.sp.name == 'out'
+            and self.dp.name == 'in_back'
+        )
 
     def __register_connection(self):
         self.app.diagram_state.add_connection(self)
